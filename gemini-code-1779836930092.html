@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>摩擦力と運動のシミュレーション（再生・停止機能付）</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f8f9fa;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+        h1 {
+            font-size: 24px;
+            color: #2c3e50;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            width: 800px;
+        }
+        .canvas-container {
+            position: relative;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            background: #fff;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+        }
+        .controls {
+            display: flex;
+            gap: 15px;
+            padding: 15px;
+            background: #f1f3f5;
+            border-radius: 4px;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 10px 15px;
+            font-size: 14px;
+            font-weight: bold;
+            color: white;
+            background-color: #339af0;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+            min-width: 80px;
+        }
+        button:hover {
+            background-color: #228be6;
+        }
+        button#pauseBtn {
+            background-color: #fab005;
+        }
+        button#pauseBtn:hover {
+            background-color: #f59f00;
+        }
+        button#resetBtn {
+            background-color: #fa5252;
+        }
+        button#resetBtn:hover {
+            background-color: #e03131;
+        }
+        button:disabled {
+            background-color: #adb5bd;
+            cursor: not-allowed;
+        }
+        .slider-group {
+            display: flex;
+            flex-direction: column;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>摩擦力と運動の連動シミュレーション</h1>
+
+    <div class="container">
+        <div class="controls">
+            <button id="startBtn">引く力(T)を開始</button>
+            <button id="pauseBtn" disabled>一時停止</button>
+            <button id="resetBtn">リセット</button>
+            
+            <div class="slider-group">
+                <label>静止摩擦係数 μ: <span id="muVal">0.5</span></label>
+                <input type="range" id="muSlider" min="0.3" max="0.8" step="0.1" value="0.5">
+            </div>
+            <div class="slider-group">
+                <label>動摩擦係数 μ': <span id="muKVal">0.3</span></label>
+                <input type="range" id="muKSlider" min="0.1" max="0.6" step="0.1" value="0.3">
+            </div>
+        </div>
+
+        <div class="canvas-container">
+            <canvas id="simCanvas" width="760" height="200"></canvas>
+        </div>
+
+        <div class="canvas-container">
+            <canvas id="graphCanvas" width="760" height="300"></canvas>
+        </div>
+    </div>
+
+<script>
+window.onload = function() {
+    const simCanvas = document.getElementById('simCanvas');
+    const simCtx = simCanvas.getContext('2d');
+    const graphCanvas = document.getElementById('graphCanvas');
+    const graphCtx = graphCanvas.getContext('2d');
+
+    const startBtn = document.getElementById('startBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const muSlider = document.getElementById('muSlider');
+    const muKSlider = document.getElementById('muKSlider');
+    const muVal = document.getElementById('muVal');
+    const muKVal = document.getElementById('muKVal');
+
+    // 物理定数・変数
+    const m = 10.0; 
+    const g = 9.8; 
+    let mu = parseFloat(muSlider.value); 
+    let muK = parseFloat(muKSlider.value); 
+    let T = 0.0; 
+    let F = 0.0; 
+    let v = 0.0; 
+    let x = 200.0; // 物体の初期位置
+    
+    let isPulling = false;  // シミュレーションが稼働中か
+    let isPaused = false;   // 一時停止中か
+    let animationId;
+    const dt = 0.05; 
+
+    // スライダーの制御
+    muSlider.addEventListener('input', (e) => {
+        mu = parseFloat(e.target.value);
+        if (mu <= muK) {
+            muK = mu - 0.1;
+            muKSlider.value = muK;
+            muKVal.innerText = muK.toFixed(1);
+        }
+        muVal.innerText = mu.toFixed(1);
+        if(!isPulling) drawAll();
+    });
+
+    muKSlider.addEventListener('input', (e) => {
+        muK = parseFloat(e.target.value);
+        if (muK >= mu) {
+            mu = muK + 0.1;
+            muSlider.value = mu;
+            muVal.innerText = mu.toFixed(1);
+        }
+        muKVal.innerText = muK.toFixed(1);
+        if(!isPulling) drawAll();
+    });
+
+    // ボタンの制御
+    startBtn.addEventListener('click', () => {
+        isPulling = true;
+        isPaused = false;
+        startBtn.disabled = true;
+        pauseBtn.disabled = false;
+        pauseBtn.innerText = "一時停止";
+        update();
+    });
+
+    pauseBtn.addEventListener('click', () => {
+        if (!isPulling) return;
+        
+        isPaused = !isPaused;
+        if (isPaused) {
+            pauseBtn.innerText = "再生";
+            cancelAnimationFrame(animationId);
+        } else {
+            pauseBtn.innerText = "一時停止";
+            update();
+        }
+    });
+
+    resetBtn.addEventListener('click', () => {
+        isPulling = false;
+        isPaused = false;
+        if(animationId) cancelAnimationFrame(animationId);
+        startBtn.disabled = false;
+        pauseBtn.disabled = true;
+        pauseBtn.innerText = "一時停止";
+        T = 0.0;
+        F = 0.0;
+        v = 0.0;
+        x = 200.0;
+        drawAll();
+    });
+
+    function drawArrow(ctx, fromX, fromY, toX, toY, color) {
+        const headlen = 10; 
+        const dx = toX - fromX;
+        const dy = toY - fromY;
+        const angle = Math.atan2(dy, dx);
+        if (Math.abs(dx) < 0.1 && Math.abs(dy) < 0.1) return; 
+
+        ctx.beginPath();
+        ctx.moveTo(fromX, fromY);
+        ctx.lineTo(toX, toY);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(toX, toY);
+        ctx.lineTo(toX - headlen * Math.cos(angle - Math.PI / 6), toY - headlen * Math.sin(angle - Math.PI / 6));
+        ctx.lineTo(toX - headlen * Math.cos(angle + Math.PI / 6), toY - headlen * Math.sin(angle + Math.PI / 6));
+        ctx.lineTo(toX, toY);
+        ctx.fillStyle = color;
+        ctx.fill();
+    }
+
+    function drawSim() {
+        simCtx.clearRect(0, 0, simCanvas.width, simCanvas.height);
+        
+        // 地面
+        simCtx.beginPath();
+        simCtx.moveTo(0, 150);
+        simCtx.lineTo(simCanvas.width, 150);
+        simCtx.strokeStyle = '#adb5bd';
+        simCtx.lineWidth = 4;
+        simCtx.stroke();
+        
+        // あらい面の表現
+        simCtx.beginPath();
+        for(let i = 0; i < simCanvas.width; i += 10) {
+            simCtx.moveTo(i, 150);
+            simCtx.lineTo(i - 5, 155);
+        }
+        simCtx.strokeStyle = '#ced4da';
+        simCtx.lineWidth = 1;
+        simCtx.stroke();
+
+        // 物体
+        const blockSize = 60;
+        simCtx.fillStyle = '#4dabf7';
+        simCtx.fillRect(x, 150 - blockSize, blockSize, blockSize);
+        simCtx.strokeStyle = '#228be6';
+        simCtx.lineWidth = 2;
+        simCtx.strokeRect(x, 150 - blockSize, blockSize, blockSize);
+
+        const scale = 2; 
+        if (T > 0.1) {
+            drawArrow(simCtx, x + blockSize, 150 - blockSize/2, x + blockSize + T * scale, 150 - blockSize/2, '#fa5252');
+            simCtx.fillStyle = '#fa5252';
+            simCtx.font = '16px Arial';
+            simCtx.fillText(`T = ${T.toFixed(1)} N`, x + blockSize + 10, 150 - blockSize/2 - 10);
+        }
+
+        if (F > 0.1) {
+            drawArrow(simCtx, x, 150 - 10, x - F * scale, 150 - 10, '#339af0');
+            simCtx.fillStyle = '#339af0';
+            simCtx.font = '16px Arial';
+            simCtx.fillText(`F = ${F.toFixed(1)} N`, x - F * scale - 60, 150 - 20);
+        }
+    }
+
+    function drawGraphBase() {
+        graphCtx.clearRect(0, 0, graphCanvas.width, graphCanvas.height);
+        const originX = 80;
+        const originY = 250;
+        const scaleX = 5;
+        const scaleY = 3;
+        const F0 = mu * m * g; 
+        const Fk = muK * m * g; 
+
+        graphCtx.beginPath();
+        graphCtx.moveTo(originX, 20);
+        graphCtx.lineTo(originX, originY);
+        graphCtx.lineTo(720, originY);
+        graphCtx.strokeStyle = '#495057';
+        graphCtx.lineWidth = 2;
+        graphCtx.stroke();
+
+        graphCtx.fillStyle = '#495057';
+        graphCtx.font = '14px Arial';
+        graphCtx.fillText('外力 T [N]', 700, originY + 20);
+        graphCtx.fillText('摩擦力 F [N]', 20, 30);
+
+        graphCtx.beginPath();
+        graphCtx.moveTo(originX, originY);
+        const maxTx = originX + F0 * scaleX;
+        const maxTy = originY - F0 * scaleY;
+        graphCtx.lineTo(maxTx, maxTy);
+        const dynTy = originY - Fk * scaleY;
+        graphCtx.lineTo(maxTx, dynTy); 
+        graphCtx.lineTo(720, dynTy);
+        graphCtx.strokeStyle = '#adb5bd';
+        graphCtx.lineWidth = 3;
+        graphCtx.setLineDash([5, 5]);
+        graphCtx.stroke();
+        graphCtx.setLineDash([]);
+
+        graphCtx.fillStyle = '#868e96';
+        graphCtx.fillText(`F₀ = ${F0.toFixed(1)} N`, maxTx - 40, maxTy - 10);
+        graphCtx.fillText(`F' = ${Fk.toFixed(1)} N`, maxTx + 20, dynTy - 10);
+    }
+
+    function drawGraphPoint() {
+        const originX = 80;
+        const originY = 250;
+        const scaleX = 5;
+        const scaleY = 3;
+        graphCtx.beginPath();
+        graphCtx.arc(originX + T * scaleX, originY - F * scaleY, 6, 0, Math.PI * 2);
+        graphCtx.fillStyle = '#fa5252';
+        graphCtx.fill();
+    }
+
+    function drawAll() {
+        drawSim();
+        drawGraphBase();
+        drawGraphPoint();
+    }
+
+    function update() {
+        if (!isPulling || isPaused) return;
+
+        if (T < 120) {
+            T += 4 * dt; 
+        }
+
+        const N = m * g; 
+        const F0 = mu * N; 
+        const Fk = muK * N; 
+        let a = 0;
+
+        if (v < 0.001 && T <= F0) {
+            F = T;
+            a = 0;
+        } else {
+            F = Fk;
+            a = (T - F) / m;
+        }
+
+        v += a * dt;
+        x += v * (dt * 10); 
+
+        if (x > simCanvas.width - 60) {
+            isPulling = false;
+            pauseBtn.disabled = true;
+        }
+
+        drawAll();
+
+        if (isPulling && !isPaused) {
+            animationId = requestAnimationFrame(update);
+        }
+    }
+
+    drawAll();
+};
+</script>
+</body>
+</html>
