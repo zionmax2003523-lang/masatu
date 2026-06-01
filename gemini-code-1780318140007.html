@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>直列コンデンサー：充電と等価容量変換シミュレーション</title>
+    <style>
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            background-color: #f1f5f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            max-width: 1200px;
+        }
+        h2 {
+            color: #0f4c81;
+            margin-top: 0;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 10px;
+            font-size: 20px;
+        }
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            align-items: center;
+            background: #f8fafc;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            flex-wrap: wrap;
+        }
+        .btn {
+            padding: 10px 18px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            color: white;
+            font-size: 14px;
+            transition: 0.2s;
+        }
+        .btn:hover { opacity: 0.8; }
+        .btn:disabled { background: #cbd5e1; cursor: not-allowed; }
+        .btn-switch { background: #e53e3e; }
+        .btn-switch.closed { background: #059669; }
+        .btn-reset { background: #64748b; }
+        .btn-merge { background: #8b5cf6; }
+        
+        .slider-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            font-size: 14px;
+            color: #334155;
+            font-weight: bold;
+        }
+        .canvas-container {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .canvas-box {
+            position: relative;
+            border: 2px solid #cbd5e1;
+            border-radius: 8px;
+            background: #ffffff;
+        }
+        /* 凡例の位置を右上に修正 */
+        .legend {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: rgba(255,255,255,0.95);
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #cbd5e1;
+            font-size: 12px;
+            color: #334155;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .icon-plus, .icon-minus {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 16px;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        .icon-plus { background-color: #ef4444; }
+        .icon-minus { background-color: #3b82f6; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>直列回路：充電過程と孤立部分の相殺（等価容量への変換）</h2>
+    
+    <div class="controls">
+        <button class="btn btn-switch" id="btnSwitch">スイッチを入れる (充電開始)</button>
+        <button class="btn btn-reset" id="btnReset">放電状態にリセット</button>
+        <div style="width: 1px; height: 40px; background: #cbd5e1; margin: 0 10px;"></div>
+        <button class="btn btn-merge" id="btnMerge" disabled>１つのコンデンサーとみなす（合成）</button>
+        <div style="width: 1px; height: 40px; background: #cbd5e1; margin: 0 10px;"></div>
+        <div class="slider-group">
+            <label>C₁ 容量: <span id="c1Val">3</span> μF</label>
+            <input type="range" id="c1Slider" min="1" max="5" step="1" value="3">
+        </div>
+        <div class="slider-group">
+            <label>C₂ 容量: <span id="c2Val">3</span> μF</label>
+            <input type="range" id="c2Slider" min="1" max="5" step="1" value="3">
+        </div>
+    </div>
+    
+    <div class="canvas-container">
+        <div class="canvas-box">
+            <div class="legend">
+                <div class="legend-item"><span class="icon-plus">+</span> 固定された正電荷</div>
+                <div class="legend-item"><span class="icon-minus">-</span> 移動できる自由電子</div>
+            </div>
+            <canvas id="circuitCanvas" width="550" height="480"></canvas>
+        </div>
+        <div class="canvas-box">
+            <canvas id="graphCanvas" width="550" height="480"></canvas>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const circuitCanvas = document.getElementById('circuitCanvas');
+    const ctxC = circuitCanvas.getContext('2d');
+    const graphCanvas = document.getElementById('graphCanvas');
+    const ctxG = graphCanvas.getContext('2d');
+    
+    const btnSwitch = document.getElementById('btnSwitch');
+    const btnReset = document.getElementById('btnReset');
+    const btnMerge = document.getElementById('btnMerge');
+    const c1Slider = document.getElementById('c1Slider');
+    const c2Slider = document.getElementById('c2Slider');
+
+    let C1 = parseInt(c1Slider.value);
+    let C2 = parseInt(c2Slider.value);
+    const V = 10; 
+    
+    const R = 6;  
+    const tMax = 35; 
+    const dt = 0.035; 
+    
+    let isClosed = false;
+    let isMerged = false;
+    let mergeProgress = 0; 
+    let t = 0;
+    
+    let electronOffset = 0;
+    let history = [];
+    let animationId;
+
+    const isolatedParticles = [];
+    const isoX = 300;
+    const isoY_top = 160;
+    const isoY_bottom = 340;
+    for (let row = 0; row < 6; row++) {
+        for (let col = -1; col <= 1; col += 2) {
+            isolatedParticles.push({
+                x: isoX + col * 15,
+                y: isoY_top + row * ((isoY_bottom - isoY_top) / 5)
+            });
+        }
+    }
+
+    function getPhysics(time) {
+        let C_eq = (C1 * C2) / (C1 + C2);
+        let tau = R * C_eq;
+        let Q_max = C_eq * V;
+        let Q_current = isClosed ? Q_max * (1 - Math.exp(-time / tau)) : 0;
+        let I_current = isClosed ? (Q_max / tau) * Math.exp(-time / tau) : 0;
+        return { Q: Q_current, I: I_current, Q_max: Q_max, C_eq: C_eq };
+    }
+
+    function drawChargeIcon(ctx, x, y, type, alpha = 1.0) {
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = type === '+' ? '#ef4444' : '#3b82f6';
+        ctx.beginPath();
+        ctx.arc(x, y, 7, 0, Math.PI*2);
+        ctx.fill();
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(type, x, y);
+        ctx.restore();
+    }
+
+    function drawCircuit(phys) {
+        ctxC.clearRect(0, 0, circuitCanvas.width, circuitCanvas.height);
+        
+        const centerX = 300;
+        const c1_y = 130; 
+        const c2_y = 370; 
+
+        ctxC.lineWidth = 2;
+        ctxC.strokeStyle = '#1e293b';
+        ctxC.beginPath();
+        ctxC.moveTo(60, 220); ctxC.lineTo(100, 220); 
+        ctxC.moveTo(70, 260); ctxC.lineTo(90, 260);  
+        ctxC.stroke();
+        
+        ctxC.fillStyle = '#1e293b';
+        ctxC.textAlign = 'center';
+        ctxC.font = '14px sans-serif';
+        ctxC.fillText('電源 V', 45, 245);
+        ctxC.fillText('+', 115, 225);
+        ctxC.fillText('-', 105, 265);
+
+        ctxC.beginPath();
+        ctxC.moveTo(80, 220); ctxC.lineTo(80, 70); ctxC.lineTo(150, 70); 
+        ctxC.moveTo(210, 70); ctxC.lineTo(centerX, 70); ctxC.lineTo(centerX, c1_y - 10); 
+        ctxC.moveTo(centerX, c2_y + 10); ctxC.lineTo(centerX, 420); ctxC.lineTo(80, 420); ctxC.lineTo(80, 260); 
+        ctxC.stroke();
+
+        ctxC.lineWidth = 3;
+        ctxC.strokeStyle = isClosed ? '#059669' : '#e53e3e';
+        ctxC.beginPath();
+        ctxC.moveTo(150, 70);
+        if (isClosed) ctxC.lineTo(210, 70);
+        else ctxC.lineTo(205, 40);
+        ctxC.stroke();
+        ctxC.fillStyle = isClosed ? '#059669' : '#e53e3e';
+        ctxC.beginPath(); ctxC.arc(150, 70, 4, 0, Math.PI*2); ctxC.fill();
+        ctxC.beginPath(); ctxC.arc(210, 70, 4, 0, Math.PI*2); ctxC.fill();
+        ctxC.fillText('スイッチ', 180, 35);
+
+        ctxC.save();
+        ctxC.globalAlpha = 1.0 - mergeProgress;
+        ctxC.fillStyle = '#f1f5f9';
+        ctxC.strokeStyle = '#94a3b8';
+        ctxC.lineWidth = 2;
+        ctxC.fillRect(centerX - 40, c1_y + 10, 80, (c2_y - 10) - (c1_y + 10));
+        ctxC.strokeRect(centerX - 40, c1_y + 10, 80, (c2_y - 10) - (c1_y + 10));
+        ctxC.fillStyle = '#0f4c81';
+        ctxC.font = 'bold 16px sans-serif';
+        ctxC.textAlign = 'left';
+        ctxC.fillText('◀ 孤立部分', centerX + 50, (c1_y + c2_y)/2);
+        ctxC.restore();
+
+        ctxC.lineWidth = 4;
+        ctxC.strokeStyle = '#2563eb';
+        ctxC.beginPath(); ctxC.moveTo(centerX - 40, c1_y - 10); ctxC.lineTo(centerX + 40, c1_y - 10); ctxC.stroke();
+        ctxC.beginPath(); ctxC.moveTo(centerX - 40, c2_y + 10); ctxC.lineTo(centerX + 40, c2_y + 10); ctxC.stroke();
+        
+        ctxC.save();
+        ctxC.globalAlpha = 1.0 - mergeProgress;
+        ctxC.beginPath(); ctxC.moveTo(centerX - 40, c1_y + 10); ctxC.lineTo(centerX + 40, c1_y + 10); ctxC.stroke();
+        ctxC.beginPath(); ctxC.moveTo(centerX - 40, c2_y - 10); ctxC.lineTo(centerX + 40, c2_y - 10); ctxC.stroke();
+        
+        ctxC.fillStyle = '#1e293b';
+        ctxC.font = '15px sans-serif';
+        ctxC.textAlign = 'right';
+        ctxC.fillText(`C₁ (${C1}μF)`, centerX - 55, c1_y + 5);
+        ctxC.fillText(`C₂ (${C2}μF)`, centerX - 55, c2_y + 5);
+        ctxC.textAlign = 'left';
+        ctxC.fillText(`Q = ${phys.Q.toFixed(2)} μC`, centerX + 55, c1_y + 5);
+        ctxC.fillText(`Q = ${phys.Q.toFixed(2)} μC`, centerX + 55, c2_y + 5);
+        ctxC.restore();
+
+        if(mergeProgress > 0) {
+            ctxC.save();
+            ctxC.globalAlpha = mergeProgress;
+            ctxC.fillStyle = '#8b5cf6';
+            ctxC.font = 'bold 15px sans-serif';
+            ctxC.textAlign = 'right';
+            ctxC.fillText(`等価容量 C_eq (${phys.C_eq.toFixed(1)}μF)`, centerX - 55, (c1_y + c2_y)/2);
+            ctxC.textAlign = 'left';
+            ctxC.fillText(`Q = ${phys.Q.toFixed(2)} μC`, centerX + 55, (c1_y + c2_y)/2);
+            
+            ctxC.setLineDash([5, 5]);
+            ctxC.strokeStyle = '#8b5cf6';
+            ctxC.lineWidth = 2;
+            ctxC.strokeRect(centerX - 45, c1_y - 15, 90, (c2_y + 15) - (c1_y - 15));
+            ctxC.restore();
+        }
+
+        let shiftRatio = phys.Q / phys.Q_max;
+        let maxShift = 24; 
+        isolatedParticles.forEach(p => {
+            drawChargeIcon(ctxC, p.x, p.y, '+', 1.0 - mergeProgress);
+            let electronY = p.y - shiftRatio * maxShift;
+            drawChargeIcon(ctxC, p.x + 10, electronY, '-', 1.0 - mergeProgress); 
+        });
+
+        let outerChargeCount = 0;
+        if (phys.Q > 0.2) {
+            outerChargeCount = Math.max(1, Math.min(8, Math.floor(phys.Q / 3)));
+        }
+        
+        if(outerChargeCount > 0) {
+            ctxC.font = 'bold 16px monospace';
+            ctxC.textAlign = 'center';
+            for(let i=0; i<outerChargeCount; i++) {
+                let offset = -35 + (70 / (outerChargeCount > 1 ? outerChargeCount-1 : 1)) * i;
+                ctxC.fillStyle = '#ef4444'; 
+                ctxC.fillText('+', centerX + offset, c1_y - 20); 
+                ctxC.fillStyle = '#3b82f6'; 
+                ctxC.fillText('-', centerX + offset, c2_y + 30); 
+            }
+        }
+
+        if (isClosed && phys.I > 0.02) {
+            electronOffset += phys.I * 0.8; 
+            const numElectronsOuter = 8;
+            for(let i=0; i<numElectronsOuter; i++) {
+                let pos = (electronOffset + i * 50) % 400;
+                let ex, ey;
+                if (pos < 220) { ex = 80 + pos; ey = 420; } 
+                else { ex = centerX; ey = 420 - (pos - 220); } 
+                if (ey > c2_y + 15) {
+                    drawChargeIcon(ctxC, ex, ey, '-');
+                }
+            }
+        }
+    }
+
+    function drawGraph(phys) {
+        ctxG.clearRect(0, 0, graphCanvas.width, graphCanvas.height);
+        
+        const ox = 60;
+        const oy = 240; 
+        const gw = 330; 
+        const gh = 180; 
+        const qMaxG = 20; 
+
+        ctxG.lineWidth = 1;
+        ctxG.strokeStyle = '#e2e8f0';
+        for(let i=-2; i<=2; i++) {
+            ctxG.beginPath(); ctxG.moveTo(ox, oy + i*(gh/2)); ctxG.lineTo(ox + gw, oy + i*(gh/2)); ctxG.stroke();
+        }
+
+        ctxG.strokeStyle = '#64748b';
+        ctxG.lineWidth = 2;
+        ctxG.beginPath(); ctxG.moveTo(ox, oy); ctxG.lineTo(ox + gw, oy); ctxG.stroke();
+        ctxG.beginPath(); ctxG.moveTo(ox, oy - gh - 20); ctxG.lineTo(ox, oy + gh + 20); ctxG.stroke();
+
+        ctxG.fillStyle = '#475569';
+        ctxG.font = '13px sans-serif';
+        ctxG.textAlign = 'right';
+        ctxG.fillText('時間 (t)', ox + gw, oy + 20);
+        ctxG.fillText('+Q [μC]', ox - 10, oy - gh + 5);
+        ctxG.fillText('-Q [μC]', ox - 10, oy + gh + 5);
+        ctxG.fillText('0', ox - 10, oy + 5);
+
+        if(history.length === 0) return;
+
+        let topLabel = mergeProgress < 0.5 ? 'C₂ 上極板 / C₁ 上極板 (+Q)' : '等価コンデンサー 上極板 (+Q)';
+        let bottomLabel = mergeProgress < 0.5 ? 'C₁ 下極板 / C₂ 下極板 (-Q)' : '等価コンデンサー 下極板 (-Q)';
+        let sumLabel = mergeProgress < 0.5 ? '孤立部分の合計電荷 (0)' : '内部極板の相殺 (0)';
+
+        function plotLine(colorStr, valueFunc, label, isDashed = false, labelYOffset = 0, alpha = 1.0) {
+            ctxG.save();
+            ctxG.globalAlpha = alpha;
+            ctxG.strokeStyle = colorStr;
+            ctxG.lineWidth = 3;
+            if(isDashed) ctxG.setLineDash([6, 6]);
+            
+            ctxG.beginPath();
+            let lastX = ox, lastY = oy;
+            for(let i=0; i<history.length; i++) {
+                let px = ox + (history[i].time / tMax) * gw;
+                let val = valueFunc(history[i].Q);
+                let py = oy - (val / qMaxG) * gh;
+                
+                if(i===0) ctxG.moveTo(px, py);
+                else ctxG.lineTo(px, py);
+                
+                if(i === history.length - 1) { lastX = px; lastY = py; }
+            }
+            ctxG.stroke();
+            
+            if(lastX > ox) {
+                ctxG.fillStyle = colorStr;
+                ctxG.beginPath(); ctxG.arc(lastX, lastY, 5, 0, Math.PI*2); ctxG.fill();
+                ctxG.font = 'bold 13px sans-serif';
+                ctxG.textAlign = 'left';
+                ctxG.fillText(label, lastX + 10, lastY + 4 + labelYOffset);
+            }
+            ctxG.restore();
+        }
+
+        function interpColor(c1, c2, factor) {
+            let r = Math.round(c1[0] + factor * (c2[0] - c1[0]));
+            let g = Math.round(c1[1] + factor * (c2[1] - c1[1]));
+            let b = Math.round(c1[2] + factor * (c2[2] - c1[2]));
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+        
+        let c_plus = interpColor([239, 68, 68], [139, 92, 246], mergeProgress); 
+        let c_minus = interpColor([59, 130, 246], [139, 92, 246], mergeProgress);
+
+        plotLine(c_plus, (q) => q, topLabel, false, -10, 1.0);
+        plotLine(c_minus, (q) => -q, bottomLabel, false, 15, 1.0);
+        plotLine('rgb(16, 185, 129)', (q) => 0, sumLabel, true, -10, 1.0 - mergeProgress);
+    }
+
+    function loop() {
+        if (isClosed && t <= tMax) {
+            t += dt;
+        }
+        
+        if (isMerged && mergeProgress < 1.0) {
+            mergeProgress += 0.03;
+            if (mergeProgress > 1.0) mergeProgress = 1.0;
+        } else if (!isMerged && mergeProgress > 0.0) {
+            mergeProgress -= 0.03;
+            if (mergeProgress < 0.0) mergeProgress = 0.0;
+        }
+        
+        let phys = getPhysics(t);
+        if (isClosed && t <= tMax) {
+            history.push({ time: t, Q: phys.Q });
+        }
+        
+        drawCircuit(phys);
+        drawGraph(phys);
+        
+        animationId = requestAnimationFrame(loop);
+    }
+
+    function resetSim() {
+        cancelAnimationFrame(animationId);
+        isClosed = false;
+        isMerged = false;
+        mergeProgress = 0;
+        t = 0;
+        history = [];
+        electronOffset = 0;
+        
+        btnSwitch.innerText = "スイッチを入れる (充電開始)";
+        btnSwitch.className = "btn btn-switch";
+        btnMerge.innerText = "１つのコンデンサーとみなす（合成）";
+        btnMerge.disabled = true;
+        
+        let phys = getPhysics(0);
+        history.push({ time: 0, Q: 0 }); 
+        drawCircuit(phys);
+        drawGraph(phys);
+        
+        loop(); 
+    }
+
+    btnSwitch.onclick = () => {
+        if (!isClosed) {
+            isClosed = true;
+            btnSwitch.innerText = "充電中...";
+            btnSwitch.className = "btn btn-switch closed";
+            btnMerge.disabled = false;
+        }
+    };
+    
+    btnMerge.onclick = () => {
+        isMerged = !isMerged;
+        btnMerge.innerText = isMerged ? "内部の孤立部分を再び見る（分離）" : "１つのコンデンサーとみなす（合成）";
+    };
+
+    btnReset.onclick = resetSim;
+    c1Slider.oninput = (e) => { C1 = parseInt(e.target.value); document.getElementById('c1Val').innerText = C1; resetSim(); };
+    c2Slider.oninput = (e) => { C2 = parseInt(e.target.value); document.getElementById('c2Val').innerText = C2; resetSim(); };
+
+    resetSim();
+})();
+</script>
+</body>
+</html>
