@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>浮力シミュレーター：力のつりあい（レスポンシブ完全対応版）</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&family=Roboto+Mono:wght@700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        /* 画面のスクロールを完全に防ぎ、100%の枠内に固定する */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            background-color: #f8fafc;
+            color: #1e293b;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; 
+        }
+
+        header {
+            background-color: #0f172a;
+            color: white;
+            height: 8vh;
+            min-height: 50px;
+            padding: 0 3vw;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            z-index: 10;
+        }
+
+        h1 { font-size: clamp(18px, 3vh, 36px); font-weight: 700; }
+        .header-sub { font-size: clamp(14px, 2vh, 20px); color: #94a3b8; font-weight: bold; }
+
+        .app-container {
+            display: flex;
+            flex: 1;
+            height: 92vh; /* ヘッダー以外の高さを確保 */
+            padding: 2vh 2vw;
+            gap: 2vw;
+            overflow: hidden;
+        }
+
+        /* --- 左側：操作パネルと数式 --- */
+        .control-panel {
+            flex: 0 0 35vw; /* 画面幅の35%を占有 */
+            max-width: 500px;
+            min-width: 320px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            padding: 2vh;
+            display: flex;
+            flex-direction: column;
+            gap: 2vh;
+            overflow-y: auto; /* 万が一極端に画面が低い場合のみスクロールを許可 */
+        }
+
+        .panel-section {
+            background: #f1f5f9;
+            padding: 2vh;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .panel-title {
+            font-size: clamp(18px, 2.5vh, 28px);
+            font-weight: 700;
+            color: #0f172a;
+            margin-bottom: 1.5vh;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1vh;
+        }
+
+        .coin-count {
+            font-size: clamp(32px, 6vh, 64px);
+            font-weight: 700;
+            color: #2563eb;
+            font-family: 'Roboto Mono', monospace;
+            line-height: 1;
+        }
+
+        input[type=range] {
+            width: 100%;
+            height: clamp(10px, 2vh, 20px);
+            background: #cbd5e1;
+            border-radius: 10px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        /* 数式表示部 */
+        .math-display {
+            font-size: clamp(20px, 3.5vh, 40px);
+            font-weight: bold;
+            text-align: center;
+            background: white;
+            padding: 1.5vh;
+            border-radius: 8px;
+            border: 2px dashed #94a3b8;
+        }
+        
+        math { font-size: inherit; }
+
+        .math-label {
+            font-size: clamp(14px, 1.8vh, 20px);
+            color: #475569;
+            font-weight: bold;
+            margin-bottom: 0.5vh;
+        }
+
+        .status-box {
+            text-align: center;
+            padding: 2vh;
+            border-radius: 8px;
+            font-size: clamp(24px, 4vh, 42px);
+            font-weight: 700;
+            transition: all 0.3s ease;
+            margin-top: auto;
+        }
+
+        /* --- 右側：ビジュアル --- */
+        .visual-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 2vh;
+            min-width: 0; /* Flexboxのオーバーフロー防止 */
+        }
+
+        .canvas-container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            flex: 0.65; /* 視覚パネルの65%の高さ */
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border: 2px solid #e2e8f0;
+        }
+
+        .graph-container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            flex: 0.35; /* 視覚パネルの35%の高さ */
+            padding: 1vh 1vw;
+            border: 2px solid #e2e8f0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        
+        .view-label {
+            position: absolute;
+            top: 1.5vh;
+            left: 1.5vw;
+            background: rgba(255,255,255,0.9);
+            padding: 0.5vh 1vw;
+            border-radius: 8px;
+            font-size: clamp(14px, 2vh, 24px);
+            font-weight: 700;
+            color: #0f172a;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+            border: 2px solid #cbd5e1;
+            z-index: 5;
+        }
+
+    </style>
+</head>
+<body>
+
+<header>
+    <h1><i class="fa-solid fa-flask"></i> 浮力シミュレーター</h1>
+    <div class="header-sub">力のつりあい・アルキメデスの原理</div>
+</header>
+
+<div class="app-container">
+    <div class="control-panel">
+        
+        <div class="panel-section">
+            <div class="panel-title"><i class="fa-solid fa-sliders"></i> 1円玉の枚数</div>
+            <div class="slider-container">
+                <div class="slider-header">
+                    <span style="font-size: clamp(18px, 2.5vh, 28px); font-weight: 700;"><math><mi>n</mi></math> =</span>
+                    <span class="coin-count" id="ui-n-val">58</span>
+                </div>
+                <input type="range" id="n-slider" min="55" max="65" value="58" step="1">
+                <div style="display: flex; justify-content: space-between; font-size: clamp(12px, 1.5vh, 20px); font-weight: bold; color: #64748b; margin-top: 1vh;">
+                    <span>55</span>
+                    <span>65</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel-section">
+            <div class="panel-title"><i class="fa-solid fa-calculator"></i> 運動方程式</div>
+            
+            <div class="math-label">▼ 重力 W (カプセル7g + コイン)</div>
+            <div class="math-display">
+                <math display="block">
+                    <mi>W</mi>
+                    <mo>=</mo>
+                    <mo>(</mo>
+                    <mn>7</mn>
+                    <mo>+</mo>
+                    <mn id="math-n" style="color: #2563eb;">58</mn>
+                    <mo>)</mo>
+                    <mi>g</mi>
+                    <mo>=</mo>
+                    <mn id="math-w" style="color: #ef4444;">65</mn>
+                    <mi>g</mi>
+                </math>
+            </div>
+
+            <div class="math-label" style="margin-top: 2vh;">▼ 浮力 F (排除水体積 65cm³)</div>
+            <div class="math-display">
+                <math display="block">
+                    <mi>F</mi>
+                    <mo>=</mo>
+                    <mn>1.0</mn>
+                    <mo>×</mo>
+                    <mn>65</mn>
+                    <mo>×</mo>
+                    <mi>g</mi>
+                    <mo>=</mo>
+                    <mn style="color: #22c55e;">65</mn>
+                    <mi>g</mi>
+                </math>
+            </div>
+        </div>
+
+        <div id="status-box" class="status-box">
+            平衡 (W = F)
+        </div>
+
+    </div>
+
+    <div class="visual-panel">
+        <div class="canvas-container" id="tank-wrapper">
+            <div class="view-label"><i class="fa-solid fa-water"></i> 水槽ビュー</div>
+            <canvas id="tank-canvas"></canvas>
+        </div>
+
+        <div class="graph-container" id="graph-wrapper">
+            <div class="view-label" style="top: 1vh; left: 1vw;"><i class="fa-solid fa-chart-line"></i> 合力グラフ</div>
+            <canvas id="graph-canvas"></canvas>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- 初期設定とDOM取得 ---
+    const slider = document.getElementById('n-slider');
+    const uiNVal = document.getElementById('ui-n-val');
+    const mathN = document.getElementById('math-n');
+    const mathW = document.getElementById('math-w');
+    const statusBox = document.getElementById('status-box');
+
+    const tankCanvas = document.getElementById('tank-canvas');
+    const tankCtx = tankCanvas.getContext('2d');
+    const tankWrapper = document.getElementById('tank-wrapper');
+
+    const graphCanvas = document.getElementById('graph-canvas');
+    const graphCtx = graphCanvas.getContext('2d');
+    const graphWrapper = document.getElementById('graph-wrapper');
+
+    // --- 物理パラメータ ---
+    const MASS_CAPSULE = 7.0;
+    const VOLUME = 65.0; 
+    let currentN = parseInt(slider.value);
+    
+    let capsuleTargetY = 0.5; 
+    let capsuleCurrentY = 0.5;
+
+    // --- キャンバスのサイズ調整（画面サイズに連動して再計算） ---
+    function resizeCanvas() {
+        // コンテナの実サイズを取得してCanvasの解像度を更新
+        tankCanvas.width = tankWrapper.clientWidth;
+        tankCanvas.height = tankWrapper.clientHeight;
+        
+        graphCanvas.width = graphWrapper.clientWidth;
+        graphCanvas.height = graphWrapper.clientHeight;
+        
+        // 描画内容をリサイズに合わせて更新
+        drawGraph();
+        drawTank();
+    }
+    // ウィンドウサイズが変更されたら常にリサイズ処理を実行
+    window.addEventListener('resize', resizeCanvas);
+
+    // --- メイン更新ロジック ---
+    function updatePhysics() {
+        currentN = parseInt(slider.value);
+        const totalW = MASS_CAPSULE + currentN;
+
+        // 1. UIテキストの更新
+        uiNVal.textContent = currentN;
+        mathN.textContent = currentN;
+        mathW.textContent = totalW;
+
+        // 2. 状態判定とUIカラーの更新
+        if (currentN < 58) {
+            statusBox.textContent = "浮上 (W < F)";
+            statusBox.style.backgroundColor = "#dcfce7";
+            statusBox.style.color = "#166534";
+            statusBox.style.border = "4px solid #22c55e";
+            capsuleTargetY = 0.25; 
+        } else if (currentN === 58) {
+            statusBox.textContent = "平衡 (W = F)";
+            statusBox.style.backgroundColor = "#eff6ff";
+            statusBox.style.color = "#1d4ed8";
+            statusBox.style.border = "4px solid #3b82f6";
+            capsuleTargetY = 0.5; 
+        } else {
+            statusBox.textContent = "沈降 (W > F)";
+            statusBox.style.backgroundColor = "#fee2e2";
+            statusBox.style.color = "#b91c1c";
+            statusBox.style.border = "4px solid #ef4444";
+            capsuleTargetY = 0.75; 
+        }
+
+        drawGraph();
+    }
+
+    // --- 水槽（タンク）の描画 ---
+    function drawTank() {
+        const w = tankCanvas.width;
+        const h = tankCanvas.height;
+        if(w === 0 || h === 0) return;
+        
+        tankCtx.clearRect(0, 0, w, h);
+
+        // 水の背景
+        tankCtx.fillStyle = "#e0f2fe";
+        tankCtx.fillRect(0, 0, w, h);
+
+        // 水面の波線
+        const waveHeight = h * 0.05;
+        tankCtx.beginPath();
+        tankCtx.moveTo(0, waveHeight);
+        for(let i=0; i<=w; i+=20) {
+            tankCtx.lineTo(i, waveHeight + Math.sin(i*0.05 + performance.now()*0.003)*(h*0.015));
+        }
+        tankCtx.lineTo(w, h);
+        tankCtx.lineTo(0, h);
+        tankCtx.fillStyle = "#bae6fd";
+        tankCtx.fill();
+
+        // 画面の高さと幅に基づいて動的にサイズを計算（見切れ防止）
+        const minDim = Math.min(w, h);
+        const radius = minDim * 0.15; // 画面サイズの15%をカプセル半径とする
+        const cx = w / 2;
+        
+        // カプセルのY座標計算（矢印が上下にはみ出さないようパディングを計算）
+        const paddingY = radius + (h * 0.25); 
+        const cy = paddingY + (h - paddingY * 2) * capsuleCurrentY;
+
+        // カプセル本体
+        tankCtx.beginPath();
+        tankCtx.arc(cx, cy, radius, 0, Math.PI * 2);
+        tankCtx.fillStyle = "rgba(255, 255, 255, 0.95)";
+        tankCtx.fill();
+        tankCtx.lineWidth = Math.max(3, minDim * 0.01);
+        tankCtx.strokeStyle = "#1e293b";
+        tankCtx.stroke();
+
+        // コインのテキスト（画面サイズに合わせて拡大縮小）
+        const fontSizeNum = Math.max(20, radius * 0.8);
+        const fontSizeText = Math.max(12, radius * 0.3);
+        tankCtx.fillStyle = "#1e293b";
+        tankCtx.font = `bold ${fontSizeNum}px 'Roboto Mono'`;
+        tankCtx.textAlign = "center";
+        tankCtx.textBaseline = "middle";
+        tankCtx.fillText(currentN, cx, cy - radius*0.1);
+        tankCtx.font = `bold ${fontSizeText}px Noto Sans JP`;
+        tankCtx.fillText("枚", cx, cy + radius*0.5);
+
+        // 矢印のスケール（画面の高さに依存させることで、絶対に画面外にはみ出ない）
+        const forceScale = h * 0.003; 
+        const fLength = VOLUME * forceScale;
+        const wLength = (MASS_CAPSULE + currentN) * forceScale;
+        const arrowGap = radius * 0.15;
+        const arrowLineWidth = Math.max(4, minDim * 0.015);
+        const labelFontSize = Math.max(14, minDim * 0.04);
+
+        // 浮力 F (上向き、緑)
+        drawArrow(tankCtx, cx, cy - radius - arrowGap, cx, cy - radius - arrowGap - fLength, "#22c55e", "F = 65g", arrowLineWidth, labelFontSize);
+        
+        // 重力 W (下向き、赤)
+        drawArrow(tankCtx, cx, cy + radius + arrowGap, cx, cy + radius + arrowGap + wLength, "#ef4444", "W = " + (MASS_CAPSULE + currentN) + "g", arrowLineWidth, labelFontSize);
+    }
+
+    // --- 矢印描画関数 ---
+    function drawArrow(ctx, fromX, fromY, toX, toY, color, label, lineWidth, fontSize) {
+        const headlen = lineWidth * 3.5; 
+        const angle = Math.atan2(toY - fromY, toX - fromX);
+        
+        const lineEndX = toX - headlen * Math.cos(angle) * 0.5;
+        const lineEndY = toY - headlen * Math.sin(angle) * 0.5;
+
+        // 直線
+        ctx.beginPath();
+        ctx.moveTo(fromX, fromY);
+        ctx.lineTo(lineEndX, lineEndY);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = lineWidth; 
+        ctx.lineCap = "round";
+        ctx.stroke();
+        
+        // 矢印の頭（三角形）
+        ctx.beginPath();
+        ctx.moveTo(toX, toY); 
+        ctx.lineTo(toX - headlen * Math.cos(angle - Math.PI / 7), toY - headlen * Math.sin(angle - Math.PI / 7));
+        ctx.lineTo(toX - headlen * Math.cos(angle + Math.PI / 7), toY - headlen * Math.sin(angle + Math.PI / 7));
+        ctx.closePath(); 
+        ctx.fillStyle = color;
+        ctx.fill();
+
+        // ラベル
+        ctx.fillStyle = color;
+        ctx.font = `bold ${fontSize}px 'Roboto Mono'`;
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.fillText(label, toX + lineWidth*3, toY + (fromY < toY ? -fontSize*0.6 : fontSize*0.6));
+    }
+
+    // --- グラフの描画 ---
+    function drawGraph() {
+        const w = graphCanvas.width;
+        const h = graphCanvas.height;
+        if(w === 0 || h === 0) return;
+        
+        graphCtx.clearRect(0, 0, w, h);
+
+        const paddingX = w * 0.12;
+        const paddingY = h * 0.15;
+        const plotW = w - paddingX * 2;
+        const centerY = h / 2 + (h * 0.05);
+
+        // 軸の描画
+        graphCtx.beginPath();
+        graphCtx.moveTo(paddingX, paddingY);
+        graphCtx.lineTo(paddingX, h - paddingY + 20); // Y軸
+        graphCtx.moveTo(paddingX - 10, centerY);
+        graphCtx.lineTo(w - paddingX + 20, centerY); // X軸 (0のライン)
+        graphCtx.strokeStyle = "#94a3b8";
+        graphCtx.lineWidth = Math.max(2, h * 0.015);
+        graphCtx.stroke();
+
+        const fontSize = Math.max(12, h * 0.08);
+
+        // 軸ラベル
+        graphCtx.fillStyle = "#1e293b";
+        graphCtx.font = `bold ${fontSize}px Noto Sans JP`;
+        graphCtx.textAlign = "right";
+        graphCtx.fillText("合力", paddingX - 10, paddingY);
+        graphCtx.fillText("0", paddingX - 15, centerY + fontSize*0.3);
+        graphCtx.textAlign = "left";
+        graphCtx.fillText("枚数 n", w - paddingX + 30, centerY + fontSize*0.3);
+
+        // 理論直線を引く
+        graphCtx.beginPath();
+        graphCtx.strokeStyle = "#cbd5e1";
+        graphCtx.lineWidth = Math.max(2, h * 0.015);
+        
+        const minN = 55;
+        const maxN = 65;
+        const rangeN = maxN - minN;
+
+        for (let i = minN; i <= maxN; i++) {
+            const netF = VOLUME - (MASS_CAPSULE + i);
+            const x = paddingX + ((i - minN) / rangeN) * plotW;
+            const y = centerY - (netF * (h * 0.03)); // 画面高さに応じたスケール
+
+            if (i === minN) graphCtx.moveTo(x, y);
+            else graphCtx.lineTo(x, y);
+            
+            // 目盛り
+            if(i % 5 === 0 || i === 58) {
+                graphCtx.fillStyle = (i === 58) ? "#2563eb" : "#475569";
+                graphCtx.font = `bold ${fontSize}px 'Roboto Mono'`;
+                graphCtx.textAlign = "center";
+                graphCtx.fillText(i, x, centerY + fontSize*1.5);
+                
+                graphCtx.beginPath();
+                graphCtx.arc(x, centerY, Math.max(3, h*0.015), 0, Math.PI*2);
+                graphCtx.fill();
+                graphCtx.beginPath(); 
+            }
+        }
+        graphCtx.stroke();
+
+        // 現在値のプロット
+        const currentNetF = VOLUME - (MASS_CAPSULE + currentN);
+        const curX = paddingX + ((currentN - minN) / rangeN) * plotW;
+        const curY = centerY - (currentNetF * (h * 0.03));
+
+        // 補助線
+        graphCtx.beginPath();
+        graphCtx.setLineDash([8, 8]);
+        graphCtx.moveTo(curX, centerY);
+        graphCtx.lineTo(curX, curY);
+        graphCtx.lineTo(paddingX, curY);
+        graphCtx.strokeStyle = "#94a3b8";
+        graphCtx.stroke();
+        graphCtx.setLineDash([]);
+
+        // プロットの点
+        graphCtx.beginPath();
+        graphCtx.arc(curX, curY, Math.max(6, h*0.04), 0, Math.PI * 2);
+        graphCtx.fillStyle = (currentN === 58) ? "#3b82f6" : "#ef4444";
+        graphCtx.fill();
+        graphCtx.strokeStyle = "white";
+        graphCtx.lineWidth = Math.max(2, h*0.015);
+        graphCtx.stroke();
+    }
+
+    // --- アニメーションループ ---
+    function animate() {
+        capsuleCurrentY += (capsuleTargetY - capsuleCurrentY) * 0.1;
+        drawTank();
+        requestAnimationFrame(animate);
+    }
+
+    // --- イベントリスナー ---
+    slider.addEventListener('input', updatePhysics);
+
+    // 起動時の初期化
+    setTimeout(() => {
+        resizeCanvas();
+        updatePhysics();
+        animate();
+    }, 100);
+
+</script>
+
+</body>
+</html>
