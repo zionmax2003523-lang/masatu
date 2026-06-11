@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>火山噴火ダイナミクス・シミュレーター（パラメータ操作版）</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+            background-color: #f8f9fa;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+        h1 {
+            font-size: 24px;
+            color: #2c3e50;
+            margin-bottom: 5px;
+        }
+        p.subtitle {
+            font-size: 14px;
+            color: #6c757d;
+            margin-bottom: 20px;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            width: 800px;
+            max-width: 100%;
+        }
+        .controls {
+            display: flex;
+            gap: 20px;
+            padding: 15px;
+            background: #f1f3f5;
+            border-radius: 8px;
+            align-items: center;
+            justify-content: flex-start;
+            flex-wrap: wrap;
+        }
+        .btn-group {
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            padding: 10px 18px;
+            font-size: 14px;
+            font-weight: bold;
+            color: white;
+            background-color: #339af0;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+            min-width: 90px;
+        }
+        button:hover { background-color: #228be6; }
+        button#startBtn { background-color: #2b8a3e; }
+        button#startBtn:hover { background-color: #234e27; }
+        button#startBtn.running { background-color: #2b8a3e; }
+        button#pauseBtn { background-color: #fab005; color: #333; }
+        button#pauseBtn:hover { background-color: #f59f00; }
+        button#resetBtn { background-color: #fa5252; }
+        button#resetBtn:hover { background-color: #e03131; }
+        button:disabled { background-color: #ced4da; color: #868e96; cursor: not-allowed; }
+        
+        .slider-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex: 1;
+            min-width: 200px;
+        }
+        .slider-label {
+            font-size: 14px;
+            font-weight: bold;
+            color: #495057;
+            display: flex;
+            justify-content: space-between;
+        }
+        .slider-group input[type="range"] {
+            width: 100%;
+            cursor: pointer;
+        }
+
+        .status-panel {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .info-panel {
+            background-color: #e8f4fd;
+            padding: 12px 15px;
+            border-radius: 8px;
+            border-left: 4px solid #339af0;
+            font-size: 13px;
+            line-height: 1.5;
+            color: #2c3e50;
+        }
+
+        .monitor-panel {
+            background-color: #f8f9fa;
+            padding: 12px 15px;
+            border-radius: 8px;
+            border-left: 4px solid #495057;
+            font-size: 13px;
+            line-height: 1.5;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            border: 1px solid #dee2e6;
+        }
+
+        .monitor-item {
+            margin-bottom: 4px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .monitor-item:last-child { margin-bottom: 0; }
+        .value-highlight {
+            font-weight: bold;
+            color: #d9480f;
+        }
+
+        .simulation-area {
+            position: relative;
+            width: 100%;
+            height: 480px;
+            background: linear-gradient(to bottom, #1a1a24, #2d2d3d);
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #dee2e6;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .gauge-container {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 60px;
+            height: 200px;
+            background-color: rgba(255, 255, 255, 0.9);
+            border: 2px solid #ced4da;
+            border-radius: 8px;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        }
+        .gauge-bar-wrapper {
+            width: 18px;
+            flex: 1;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            border: 1px solid #ced4da;
+        }
+        .gauge-fill {
+            width: 100%;
+            height: 0%;
+            background: linear-gradient(to top, #ff3300, #ffaa00);
+        }
+        .gauge-label {
+            font-size: 11px;
+            font-weight: bold;
+            margin-top: 6px;
+            color: #495057;
+            text-align: center;
+        }
+        .pyroclastic-alert {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background-color: #c92a2a;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 14px;
+            animation: blink 0.5s infinite alternate;
+            display: none;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            z-index: 10;
+        }
+        @keyframes blink {
+            from { opacity: 0.5; }
+            to { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+    <h1>火山噴火ダイナミクス・シミュレーター</h1>
+    <p class="subtitle">マグマ粘性パラメータの連続操作による上昇速度・形状変化の流体力学的可視化</p>
+
+    <div class="container">
+        <div class="controls">
+            <div class="btn-group">
+                <button id="startBtn">再生</button>
+                <button id="pauseBtn" disabled>一時停止</button>
+                <button id="resetBtn">リセット</button>
+            </div>
+            
+            <div class="slider-group">
+                <div class="slider-label">
+                    <span>マグマの粘性パラメータ η :</span>
+                    <span id="viscVal" class="value-highlight">0.50</span>
+                </div>
+                <input type="range" id="viscositySlider" min="0.10" max="1.00" step="0.01" value="0.50">
+            </div>
+        </div>
+
+        <div class="status-panel">
+            <div class="info-panel" id="infoText">
+                <!-- 動的に書き換え -->
+            </div>
+            <div class="monitor-panel">
+                <div class="monitor-item">火山体の分類: <span id="typeMonitor" class="value-highlight">---</span></div>
+                <div class="monitor-item">マグマ上昇速度（流体抵抗連動）: <span id="speedMonitor" class="value-highlight">---</span></div>
+                <div class="monitor-item">現在の火道内高度: <span id="heightMonitor" class="value-highlight">0 %</span></div>
+                <div class="monitor-item">高粘性噴火時の火砕流判定: <span id="pyroMonitor" class="value-highlight">---</span></div>
+            </div>
+        </div>
+
+        <div class="simulation-area">
+            <div class="pyroclastic-alert" id="pyroAlert">警告: 火砕流発生 (確率 1/3)</div>
+            
+            <div class="gauge-container">
+                <div class="gauge-bar-wrapper">
+                    <div class="gauge-fill" id="gaugeFill"></div>
+                </div>
+                <div class="gauge-label">内部圧力</div>
+            </div>
+
+            <canvas id="volcanoCanvas" width="800" height="480"></canvas>
+        </div>
+    </div>
+
+<script>
+window.onload = function() {
+    const canvas = document.getElementById('volcanoCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    const startBtn = document.getElementById('startBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const viscositySlider = document.getElementById('viscositySlider');
+    const viscVal = document.getElementById('viscVal');
+    const gaugeFill = document.getElementById('gaugeFill');
+    const infoText = document.getElementById('infoText');
+    const pyroAlert = document.getElementById('pyroAlert');
+    
+    // モニター用要素
+    const typeMonitor = document.getElementById('typeMonitor');
+    const speedMonitor = document.getElementById('speedMonitor');
+    const heightMonitor = document.getElementById('heightMonitor');
+    const pyroMonitor = document.getElementById('pyroMonitor');
+
+    // 物理状態変数
+    let eta = parseFloat(viscositySlider.value); 
+    let pressure = 0;
+    let magmaLevel = 0; 
+    let isErupting = false;
+    let eruptionTimer = 0;
+    const eruptionDuration = 60; 
+    let particles = [];
+    let pyroclasticParticles = [];
+    let showPyroclastic = false;
+    
+    let isRunning = false;
+    let animationId;
+    let audioCtx = null;
+
+    // 粘性パラメータから物理パラメータを動的に計算する関数
+    function getPhysicalParams(currentEta) {
+        // 形状パラメータ
+        const slope = 0.10 + (currentEta - 0.10) * (0.65 - 0.10) / (1.00 - 0.10); 
+        const mountainHeight = 100 + (currentEta - 0.10) * (250 - 100) / (1.00 - 0.10);
+        const craterWidth = 45 - (currentEta - 0.10) * (25 - 45) / (1.00 - 0.10);
+        
+        // 内部圧力と上昇速度パラメータ
+        const limit = 50 + currentEta * 100; 
+        // 粘性が高いほど上昇スピードが極めて遅くなるよう反比例・線形補間を調整
+        const speed = 0.12 + (1.00 - currentEta) * 1.38; 
+
+        let classification = "";
+        let desc = "";
+        let speedText = "";
+
+        if (currentEta < 0.40) {
+            classification = "楯状火山（玄武岩質）";
+            speedText = `高速 (相対値: ${speed.toFixed(2)})`;
+            desc = "<strong>玄武岩質マグマ（低粘性）</strong><br>粘性が低く流動性に優れるため、火道内の管内摩擦抵抗が小さく、マグマは極めて<strong>高速で上昇</strong>する。揮発性ガスが容易に脱皮・脱ガスするため、内部圧力の限界値は低く、噴火に達する頻度は高い。噴火スタイルは赤熱した溶岩が穏やかに地表へ流れ出るものとなり、傾斜角の極めて緩やかな火山体を形成する。";
+        } else if (currentEta < 0.70) {
+            classification = "成層火山（安山岩質）";
+            speedText = `中速 (相対値: ${speed.toFixed(2)})`;
+            desc = "<strong>安山岩質マグマ（中粘性）</strong><br>中程度の粘性を有し、火道内を適度な速度で上昇する。ガス成分が適度に閉じ込められるため、一定の圧力が蓄積された段階で中規模の爆発的噴火を引き起こす。溶岩流と火山砕屑物が交互に堆積することにより、美しい円錐形の山体を構築する。";
+        } else {
+            classification = "溶岩ドーム / 鐘状火山（流紋岩・デイサイト質）";
+            speedText = `低速 (相対値: ${speed.toFixed(2)})`;
+            desc = "<strong>流紋岩・デイサイト質マグマ（高粘性）</strong><br>非常に粘性が高くドロドロしているため、火道壁との摩擦抵抗が最大化し、マグマは極めて<strong>低速でじわじわと上昇</strong>する。ガスが完全に閉じ込められることで、内部圧力は極限まで蓄積され、限界に達すると猛烈な大爆発を起こす。噴火の際、1/3の確率で危険な火砕流が斜面を猛スピードで駆け下りる。";
+        }
+
+        return { slope, mountainHeight, craterWidth, limit, speed, classification, speedText, desc };
+    }
+
+    // 音声初期化
+    function initAudio() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+    }
+
+    function playEruptionSound(currentEta) {
+        if (!audioCtx) return;
+        try {
+            const now = audioCtx.currentTime;
+            let duration = 0.6 + currentEta * 1.9; 
+            const bufferSize = audioCtx.sampleRate * duration;
+            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = Math.random() * 2 - 1;
+            }
+            
+            const noise = audioCtx.createBufferSource();
+            noise.buffer = buffer;
+            const noiseFilter = audioCtx.createBiquadFilter();
+            noiseFilter.type = 'lowpass';
+            const noiseGain = audioCtx.createGain();
+            
+            const osc = audioCtx.createOscillator();
+            const oscGain = audioCtx.createGain();
+            osc.type = 'sawtooth';
+            
+            if (currentEta < 0.40) {
+                // ゴボゴボという低圧の連続破裂音
+                noiseFilter.frequency.setValueAtTime(160, now);
+                noiseGain.gain.setValueAtTime(0.18, now);
+                noiseGain.gain.linearRampToValueAtTime(0, now + duration);
+                
+                osc.frequency.setValueAtTime(55, now);
+                osc.frequency.linearRampToValueAtTime(30, now + duration);
+                oscGain.gain.setValueAtTime(0.25, now);
+                oscGain.gain.linearRampToValueAtTime(0, now + duration);
+            } else if (currentEta < 0.70) {
+                // ドーンという標準的な爆発音
+                noiseFilter.frequency.setValueAtTime(280, now);
+                noiseFilter.frequency.linearRampToValueAtTime(70, now + duration);
+                noiseGain.gain.setValueAtTime(0.45, now);
+                noiseGain.gain.linearRampToValueAtTime(0, now + duration);
+                
+                osc.frequency.setValueAtTime(90, now);
+                osc.frequency.linearRampToValueAtTime(35, now + duration * 0.8);
+                oscGain.gain.setValueAtTime(0.5, now);
+                oscGain.gain.linearRampToValueAtTime(0, now + duration * 0.9);
+            } else {
+                // 地響きを伴う大爆発音（高エネルギー）
+                noiseFilter.frequency.setValueAtTime(550, now);
+                noiseFilter.frequency.linearRampToValueAtTime(40, now + duration);
+                noiseGain.gain.setValueAtTime(0.75, now);
+                noiseGain.gain.linearRampToValueAtTime(0, now + duration);
+                
+                osc.frequency.setValueAtTime(130, now);
+                osc.frequency.linearRampToValueAtTime(15, now + duration * 0.8);
+                oscGain.gain.setValueAtTime(0.85, now);
+                oscGain.gain.linearRampToValueAtTime(0, now + duration);
+            }
+            
+            noise.connect(noiseFilter);
+            noiseFilter.connect(noiseGain);
+            noiseGain.connect(audioCtx.destination);
+            
+            osc.connect(noiseFilter); 
+            osc.connect(oscGain);
+            oscGain.connect(audioCtx.destination);
+            
+            noise.start(now);
+            osc.start(now);
+            noise.stop(now + duration);
+            osc.stop(now + duration);
+        } catch (e) {
+            console.error("Audio error:", e);
+        }
+    }
+
+    // パラメータパネル・UI更新
+    function updateUI() {
+        eta = parseFloat(viscositySlider.value);
+        viscVal.innerText = eta.toFixed(2);
+        
+        const params = getPhysicalParams(eta);
+        infoText.innerHTML = params.desc;
+        typeMonitor.innerText = params.classification;
+        speedMonitor.innerText = params.speedText;
+    }
+
+    // スライダー操作イベント
+    viscositySlider.addEventListener('input', () => {
+        updateUI();
+        if (!isRunning) {
+            // 停止中でもスライダーを動かしたときに山の形がリアルタイムに変わるように描画
+            drawSim();
+        }
+    });
+
+    startBtn.addEventListener('click', () => {
+        initAudio();
+        isRunning = true;
+        startBtn.disabled = true;
+        pauseBtn.disabled = false;
+        pauseBtn.innerText = "一時停止";
+        update();
+    });
+
+    pauseBtn.addEventListener('click', () => {
+        if (!isRunning && startBtn.disabled) {
+            isRunning = true;
+            pauseBtn.innerText = "一時停止";
+            update();
+        } else if (isRunning) {
+            isRunning = false;
+            pauseBtn.innerText = "再生";
+            cancelAnimationFrame(animationId);
+        }
+    });
+
+    resetBtn.addEventListener('click', () => {
+        resetSimulation();
+        isRunning = false;
+        startBtn.disabled = false;
+        pauseBtn.disabled = true;
+        pauseBtn.innerText = "一時停止";
+        pyroMonitor.innerText = "---";
+        if(animationId) cancelAnimationFrame(animationId);
+        drawSim(); 
+    });
+
+    function resetSimulation() {
+        pressure = 0;
+        magmaLevel = 0;
+        isErupting = false;
+        particles = [];
+        pyroclasticParticles = [];
+        showPyroclastic = false;
+        pyroAlert.style.display = 'none';
+        gaugeFill.style.height = '0%';
+        heightMonitor.innerText = "0 %";
+        updateUI();
+    }
+
+    // シミュレーションの時間ステップ更新
+    function stepSimulation() {
+        const params = getPhysicalParams(eta);
+        
+        if (!isErupting) {
+            // 内部圧力および高度の上昇（粘性に応じたスピード）
+            pressure += params.speed;
+            if (pressure > params.limit) pressure = params.limit;
+            magmaLevel = pressure / params.limit;
+            
+            heightMonitor.innerText = Math.floor(magmaLevel * 100) + " %";
+
+            // 限界到達で噴火
+            if (pressure >= params.limit) {
+                isErupting = true;
+                eruptionTimer = eruptionDuration;
+                playEruptionSound(eta);
+
+                // 高粘性領域（0.70以上）の場合のみ、1/3の完全確率抽選を行う
+                if (eta >= 0.70) {
+                    if (Math.random() < 1/3) {
+                        showPyroclastic = true;
+                        pyroAlert.style.display = 'block';
+                        pyroMonitor.innerText = "発生 (1/3の確率に当選)";
+                        const baseLine = canvas.height - 40;
+                        createPyroclasticFlow(canvas.width/2, baseLine - params.mountainHeight);
+                    } else {
+                        showPyroclastic = false;
+                        pyroMonitor.innerText = "非発生 (2/3の確率)";
+                    }
+                } else {
+                    pyroMonitor.innerText = "対象外 (高粘性のみ発生)";
+                }
+            }
+        } else {
+            // 噴火中の処理
+            eruptionTimer--;
+            let pCountPerFrame = eta < 0.40 ? 3 : (eta < 0.70 ? 6 : 12);
+            const baseLine = canvas.height - 40;
+            createEruptionParticles(canvas.width/2, baseLine - params.mountainHeight, pCountPerFrame, eta);
+
+            if (eruptionTimer <= 0) {
+                isErupting = false;
+                pressure = 0;
+                magmaLevel = 0;
+                pyroAlert.style.display = 'none';
+                showPyroclastic = false;
+            }
+        }
+        gaugeFill.style.height = ((pressure / params.limit) * 100) + '%';
+    }
+
+    function createEruptionParticles(x, y, count, currentEta) {
+        for (let i = 0; i < count; i++) {
+            let vx, vy, size, life, color;
+            const rand = Math.random();
+            
+            if (currentEta < 0.40) {
+                // 低粘性：低く横に広がりやすい溶岩流
+                vx = (Math.random() - 0.5) * 4.5;
+                vy = -Math.random() * 1.5 - 0.8;
+                size = Math.random() * 4 + 4;
+                life = Math.random() * 35 + 25;
+                color = rand > 0.4 ? '#ff3300' : (rand > 0.1 ? '#ff6600' : '#ffaa00');
+            } else if (currentEta < 0.70) {
+                // 中粘性：標準的な放物線爆発
+                vx = (Math.random() - 0.5) * 5.5;
+                vy = -Math.random() * 8 - 4;
+                size = Math.random() * 5 + 2;
+                life = Math.random() * 55 + 30;
+                color = rand > 0.5 ? '#ff2200' : (rand > 0.2 ? '#ff5500' : '#6c757d');
+            } else {
+                // 高粘性：超高高度への炸裂と激しい破片
+                vx = (Math.random() - 0.5) * 9;
+                vy = -Math.random() * 15 - 6;
+                size = Math.random() * 6 + 3;
+                life = Math.random() * 75 + 45;
+                color = rand > 0.6 ? '#ff1100' : (rand > 0.3 ? '#ff4400' : (rand > 0.1 ? '#ff9900' : '#343a40'));
+            }
+            particles.push({ x, y, vx, vy, size, life, maxLife: life, color });
+        }
+    }
+
+    function createPyroclasticFlow(startX, startY) {
+        const pCount = 120;
+        for (let i = 0; i < pCount; i++) {
+            const dir = Math.random() > 0.5 ? 1 : -1;
+            pyroclasticParticles.push({
+                x: startX + (Math.random() - 0.5) * 10,
+                y: startY,
+                dir: dir,
+                speed: Math.random() * 3.8 + 2.2,
+                size: Math.random() * 9 + 6,
+                life: Math.random() * 65 + 45,
+                color: Math.random() > 0.4 ? 'rgba(235, 55, 15, 0.85)' : 'rgba(108, 117, 125, 0.85)'
+            });
+        }
+    }
+
+    // 描画関数
+    function drawSim() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const params = getPhysicalParams(eta);
+        const cx = canvas.width / 2;
+        const baseLine = canvas.height - 40; 
+        const craterY = baseLine - params.mountainHeight;
+        const pipeWidth = params.craterWidth;
+        const chamberY = baseLine + 20;
+
+        // 1. マグマだまり（供給源）
+        ctx.beginPath();
+        ctx.arc(cx, chamberY + 50, 65, 0, Math.PI, true);
+        ctx.fillStyle = '#cc2200';
+        ctx.fill();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#343a40';
+        ctx.stroke();
+
+        // 2. 火道（内部パイプ）の背景
+        ctx.fillStyle = '#111116';
+        ctx.fillRect(cx - pipeWidth / 2, craterY, pipeWidth, chamberY - craterY);
+        
+        // 火道の枠線（断面構造の強調）
+        ctx.strokeStyle = '#495057';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(cx - pipeWidth / 2, craterY, pipeWidth, chamberY - craterY);
+
+        // 3. 火道内を上昇するマグマの描画（「過程」をはっきり見せるための強化エフェクト）
+        if (magmaLevel > 0) {
+            const currentMagmaHeight = (chamberY - craterY) * magmaLevel;
+            const currentMagmaY = chamberY - currentMagmaHeight;
+            
+            // マグマ本体のグラデーション
+            let magmaGrad = ctx.createLinearGradient(cx, chamberY, cx, currentMagmaY);
+            magmaGrad.addColorStop(0, '#cc2200');
+            magmaGrad.addColorStop(0.7, '#ff3300');
+            magmaGrad.addColorStop(1, '#ff8800');
+            
+            ctx.fillStyle = magmaGrad;
+            ctx.fillRect(cx - pipeWidth / 2 + 1, currentMagmaY, pipeWidth - 2, currentMagmaHeight);
+            
+            // 上昇中の活動的な微小気泡・対流の視覚化（動いている感を出す）
+            if (isRunning && !isErupting) {
+                // マグマ先端の激しい沸騰エフェクト
+                for(let k=0; k<3; k++) {
+                    ctx.fillStyle = '#ffea00';
+                    ctx.fillRect(cx - pipeWidth/2 + Math.random()*pipeWidth, currentMagmaY + Math.random()*15, 3, 3);
+                }
+                // 管内部の気泡上昇
+                if (Math.random() > 0.5) {
+                    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+                    ctx.beginPath();
+                    ctx.arc(cx - pipeWidth/2 + Math.random()*pipeWidth, currentMagmaY + Math.random()*currentMagmaHeight, 2, 0, Math.PI*2);
+                    ctx.fill();
+                }
+            }
+        }
+
+        // 4. 火山体（山体の岩盤・構造）
+        ctx.beginPath();
+        ctx.moveTo(0, baseLine);
+        ctx.lineTo(cx - pipeWidth / 2, craterY);
+        ctx.lineTo(cx + pipeWidth / 2, craterY);
+        ctx.lineTo(canvas.width, baseLine);
+        ctx.lineTo(canvas.width, canvas.height);
+        ctx.lineTo(0, canvas.height);
+        ctx.closePath();
+        ctx.fillStyle = '#4a3b32';
+        ctx.fill();
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = '#2d2520';
+        ctx.stroke();
+
+        // 5. 地表のベースライン
+        ctx.beginPath();
+        ctx.moveTo(0, baseLine);
+        ctx.lineTo(canvas.width, baseLine);
+        ctx.strokeStyle = '#343a40';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+
+        // 6. 噴火パーティクルの物理挙動および描画
+        for (let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            
+            if (eta >= 0.40) {
+                p.vy += 0.18; // 中・高粘性は標準的な重力による放物線運動
+            } else {
+                p.vy += 0.05; // 低粘性の溶岩は、斜面に沿ってなだらかに滑り落ちる流動挙動
+                
+                const dist = Math.abs(p.x - cx);
+                const currentSlopeY = craterY + (dist - pipeWidth/2) * params.slope;
+                
+                if (p.y >= currentSlopeY && p.y < baseLine) {
+                    p.y = currentSlopeY;
+                    p.vy = 0.8; 
+                    p.vx = (p.x > cx) ? 2.2 : -2.2; 
+                } else if (p.y >= baseLine) {
+                    p.y = baseLine;
+                    p.vx *= 0.65; 
+                    p.life -= 2; 
+                }
+            }
+            p.life--;
+
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, Math.max(0.1, p.size * (p.life / p.maxLife)), 0, Math.PI * 2);
+            ctx.fillStyle = p.color;
+            ctx.fill();
+
+            if (p.life <= 0 || p.y > canvas.height || p.x < 0 || p.x > canvas.width) {
+                particles.splice(i, 1);
+            }
+        }
+
+        // 7. 火砕流パーティクルの更新・描画（高粘性領域のみ）
+        if (showPyroclastic) {
+            if (isRunning && isErupting && Math.random() > 0.25) {
+                const dir = Math.random() > 0.5 ? 1 : -1;
+                pyroclasticParticles.push({
+                    x: cx + (Math.random() - 0.5) * 15,
+                    y: craterY + 5,
+                    dir: dir,
+                    speed: Math.random() * 4 + 3,
+                    size: Math.random() * 10 + 6,
+                    life: Math.random() * 55 + 40,
+                    color: Math.random() > 0.4 ? 'rgba(240, 60, 20, 0.85)' : 'rgba(108, 117, 125, 0.85)'
+                });
+            }
+
+            for (let i = pyroclasticParticles.length - 1; i >= 0; i--) {
+                let p = pyroclasticParticles[i];
+                p.x += p.dir * p.speed;
+                
+                const deltaX = Math.abs(p.x - cx) - (pipeWidth / 2);
+                if (deltaX > 0) {
+                    p.y = craterY + params.slope * deltaX;
+                } else {
+                    p.y = craterY;
+                }
+
+                if (p.y >= baseLine) {
+                    p.y = baseLine - (p.size / 3);
+                    p.speed *= 0.93; 
+                }
+
+                p.life--;
+                ctx.beginPath();
+                ctx.arc(p.x + (Math.random() - 0.5) * 6, p.y + (Math.random() - 0.5) * 6, Math.max(0.1, p.size), 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
+                ctx.fill();
+
+                if (p.life <= 0 || p.x < 0 || p.x > canvas.width) {
+                    pyroclasticParticles.splice(i, 1);
+                }
+            }
+        }
+    }
+
+    function update() {
+        if (isRunning) {
+            stepSimulation();
+        }
+        drawSim();
+        if (isRunning) {
+            animationId = requestAnimationFrame(update);
+        }
+    }
+
+    // 初期化実行
+    updateUI();
+    drawSim();
+};
+</script>
+
+</body>
+</html>
